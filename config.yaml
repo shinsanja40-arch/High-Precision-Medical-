@@ -1,0 +1,194 @@
+# Medical Diagnosis System Configuration
+# 의료 진단 시스템 설정
+
+# System Parameters
+system:
+  # Maximum number of debate rounds before forced termination
+  max_debate_rounds: 100
+  
+  # Number of repeated rounds before stagnation intervention
+  stagnation_threshold: 10
+  
+  # Minimum number of specialists to select
+  min_specialists: 2
+  
+  # Maximum number of specialists to select
+  max_specialists: 6
+  
+  # Show detailed debate process to user (true/false)
+  # false = only show final results (default)
+  # true = show all debate stages
+  debate_detail_output: false
+
+# Claude API Configuration
+api:
+  # Model to use (claude-sonnet-4-20250514 recommended)
+  model: "claude-sonnet-4-20250514"
+  
+  # Maximum tokens per API call
+  max_tokens: 4000
+  
+  # Temperature for responses (0.0 = deterministic, 1.0 = creative)
+  temperature: 0.7
+
+# Inquiry Configuration
+inquiry:
+  # Required fields to collect during inquiry
+  required_fields:
+    - age
+    - gender
+    - symptoms
+  
+  # Optional but recommended fields
+  optional_fields:
+    - chronic_conditions
+    - medications
+    - family_history
+  
+  # Maximum number of follow-up questions
+  max_questions: 15
+
+# Specialist Selection
+specialists:
+  # Available medical specialties (Korean)
+  available:
+    - 내과
+    - 신경과
+    - 정형외과
+    - 이비인후과
+    - 안과
+    - 피부과
+    - 정신건강의학과
+    - 심장내과
+    - 호흡기내과
+    - 소화기내과
+    - 내분비내과
+    - 신장내과
+    - 혈액종양내과
+    - 류마티스내과
+    - 감염내과
+  
+  # Specialist selection strategy
+  selection_strategy: "symptom_based"  # or "ml_based"
+
+# Debate Protocol
+debate:
+  # Stages in debate protocol (do not modify order)
+  stages:
+    - opinion
+    - referee_check
+    - cross_counter
+    - rebuttal
+    - final_judgment
+  
+  # Consensus threshold (0.0-1.0)
+  # Lower = stricter consensus requirement
+  consensus_threshold: 0.85
+  
+  # Enable referee interventions
+  referee_enabled: true
+  
+  # Enable hallucination detection
+  hallucination_detection: true
+
+# Output Configuration
+output:
+  # Language for output
+  language: "ko"  # ko = Korean, en = English
+  
+  # Output format for final diagnosis
+  format: "structured"  # structured, narrative, or json
+  
+  # Include confidence scores in output
+  show_confidence: true
+  
+  # Include reasoning in output
+  show_reasoning: true
+  
+  # Save debate logs
+  save_logs: false
+  
+  # Log directory
+  log_directory: "debate_logs"
+
+# Safety Settings
+safety:
+  # Enable disclaimer in output
+  show_disclaimer: true
+  
+  # Disclaimer text (Korean)
+  disclaimer_text: |
+    ⚠️  면책조항: 이 시스템은 연구 목적으로 설계되었으며,
+    전문 의료 진단을 대체할 수 없습니다.
+    정확한 진단은 반드시 의료 전문가와 상담하세요.
+  
+  # Block emergency medical queries
+  block_emergency: true
+  
+  # Emergency keywords to detect
+  emergency_keywords:
+    - 응급
+    - 심정지
+    - 의식불명
+    - 대량출혈
+    - 호흡곤란
+    - 심한 통증
+
+# Logging
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # Enable file logging
+  file_enabled: false
+  
+  # Log file path
+  log_file: "system.log"
+  
+  # Console logging
+  console_enabled: true
+
+# Research Mode
+research:
+  # Enable research mode (bypasses some safety checks)
+  enabled: false
+  
+  # Batch processing
+  batch_mode: false
+  
+  # Export format for results
+  export_format: "json"  # json, csv, or xlsx
+  
+  # Results directory
+  results_directory: "research_results"
+
+# Performance
+performance:
+  # Cache API responses (for development/testing)
+  cache_responses: false
+  
+  # Timeout for API calls (seconds)
+  api_timeout: 60
+  
+  # Retry failed API calls
+  retry_on_failure: true
+  
+  # Maximum retries
+  max_retries: 3
+  
+  # Delay between retries (seconds)
+  retry_delay: 2
+
+# Experimental Features
+experimental:
+  # Use multi-modal input (images, etc.)
+  multimodal_input: false
+  
+  # Integration with medical databases
+  database_integration: false
+  
+  # Real-time learning from feedback
+  adaptive_learning: false
+  
+  # Parallel debate processing
+  parallel_debates: false
