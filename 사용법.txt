@@ -1,0 +1,59 @@
+# 의료 진단 시스템 - 사용법
+
+## 🚀 실행 방법
+
+### 1단계: 라이브러리 설치
+```bash
+pip install -r requirements.txt
+```
+
+### 2단계: API 키 입력
+`.env` 파일을 열고 API 키를 입력하세요:
+```
+OPENAI_API_KEY=sk-proj-실제키
+ANTHROPIC_API_KEY=sk-ant-실제키
+GOOGLE_API_KEY=실제키
+```
+**최소 1개 이상 필요!**
+
+### 3단계: 실행
+```bash
+python cli.py
+```
+
+## 주요 명령어
+
+```bash
+# 한국어로 실행
+python cli.py --language ko
+
+# Claude만 사용
+python cli.py --provider claude
+
+# GPT만 사용  
+python cli.py --provider gpt
+
+# 여러 AI 동시 사용
+python cli.py --multi-ai
+
+# 토론 과정 표시
+python cli.py --verbose
+```
+
+## 🔍 웹 검색 기능
+
+시스템은 **여러 검색 엔진**(Bing, DuckDuckGo, Yahoo 등)을 자동으로 시도하여:
+- 최신 의학 데이터베이스 검색
+- 약물 상호작용 정보 확보
+- 질환 증상 및 치료 가이드라인 검색
+- 최신 의학 연구 정보 통합
+
+**영어/한국어 모두 지원**하여 차등 진단 근거를 확보합니다.
+검색 실패 시 자동으로 다음 엔진을 시도합니다.
+
+## ⚠️ 주의
+- 연구/교육 목적만 사용
+- 실제 진단 절대 금지
+- API 비용 발생
+
+끝!
