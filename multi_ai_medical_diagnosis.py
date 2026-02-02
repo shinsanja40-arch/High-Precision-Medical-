@@ -49,6 +49,151 @@ except ImportError:
 GROK_AVAILABLE = OPENAI_AVAILABLE  # Uses OpenAI-compatible API
 
 
+class RepetitionDetector:
+    """
+    Detects repetitive arguments using Jaccard similarity
+    Improved for Korean language support and medical terminology
+    """
+    
+    def __init__(self, max_history=10, similarity_threshold=0.85, min_keywords=2):
+        """
+        Initialize RepetitionDetector
+        
+        Args:
+            max_history: Number of previous rounds to keep in memory
+            similarity_threshold: Minimum similarity (0-1) to flag as repetition
+            min_keywords: Minimum number of keywords required (default: 2)
+                         Lower value = can detect short sentence repetition
+                         Higher value = more strict, avoids false positives
+        """
+        from collections import deque
+        self.argument_history = deque(maxlen=max_history)
+        self.similarity_threshold = similarity_threshold
+        self.min_keywords = min_keywords  # Configurable minimum keywords
+        
+        # Extended common medical and general terms (40+ terms)
+        self.common_terms = {
+            # English medical terms
+            'patient', 'symptom', 'disease', 'treatment', 'diagnosis',
+            'medication', 'doctor', 'condition', 'therapy', 'clinical',
+            'syndrome', 'disorder', 'infection', 'chronic', 'acute',
+            'test', 'result', 'value', 'check', 'need', 'possible', 
+            'present', 'absent', 'positive', 'negative', 'normal', 
+            'abnormal', 'high', 'low', 'increased', 'decreased', 
+            'elevated', 'reduced', 'severe', 'mild', 'moderate',
+            
+            # Korean medical terms (expanded)
+            '환자', '증상', '질환', '치료', '진단', '약물', '의사',
+            '검사', '결과', '수치', '확인', '필요', '가능', '있음', 
+            '없음', '양성', '음성', '정상', '비정상', '높은', '낮은',
+            '증가', '감소', '상승', '하락', '심각', '경미', '중등도',
+            '합니다', '입니다', '있습니다', '됩니다', '했습니다',
+            
+            # Common verbs/endings that don't add diagnostic value
+            'should', 'could', 'would', 'might', 'must', 'have', 'been',
+            '해야', '할수', '있다', '한다', '이다', '되다', '하다'
+        }
+    
+    def extract_keywords(self, text: str, min_length: int = 4) -> frozenset:
+        """
+        Extract meaningful keywords with improved medical term handling
+        Excludes common words that cause false positives
+        Handles Korean morphology with suffix removal
+        """
+        import re
+        
+        # Extract words of min_length or more
+        words = re.findall(r'\b\w{' + str(min_length) + r',}\b', text.lower())
+        
+        # Korean suffix removal patterns (교착어 처리)
+        # Remove common Korean particles and endings that don't change semantic meaning
+        korean_suffixes = [
+            r'입니다$', r'합니다$', r'습니다$', r'됩니다$', r'있습니다$',
+            r'없습니다$', r'했습니다$', r'였습니다$', r'이다$', r'하다$',
+            r'되다$', r'있다$', r'없다$', r'이며$', r'이고$', r'에서$',
+            r'으로$', r'를$', r'을$', r'가$', r'이$', r'의$', r'에$',
+            r'성$', r'적$', r'인$'  # -성, -적, -인 (감염성 → 감염)
+        ]
+        
+        # Clean words by removing suffixes
+        cleaned_words = []
+        for word in words:
+            cleaned = word
+            # Try to remove Korean suffixes
+            for suffix_pattern in korean_suffixes:
+                cleaned = re.sub(suffix_pattern, '', cleaned)
+            
+            # Only keep if still has meaningful length after cleaning
+            if len(cleaned) >= min_length:
+                cleaned_words.append(cleaned)
+            elif len(word) >= min_length:
+                # If cleaning made it too short, keep original
+                cleaned_words.append(word)
+        
+        # Remove common terms that don't contribute to uniqueness
+        keywords = {w for w in cleaned_words if w not in self.common_terms}
+        
+        # Require minimum number of keywords for valid comparison
+        # NOTE: Lower min_keywords (e.g., 2) = can detect short sentence repetition
+        #       Higher min_keywords (e.g., 3-4) = more strict, fewer false positives
+        if len(keywords) < self.min_keywords:
+            return frozenset()
+        
+        return frozenset(keywords)
+    
+    def check_repetition(self, current_text: str, speaker_role: str = 'doctor') -> Tuple[bool, float, Optional[int]]:
+        """
+        Check if current text is repetitive compared to history
+        
+        Args:
+            current_text: Text to check
+            speaker_role: 'doctor' or 'referee' (referees are not tracked)
+        
+        Returns:
+            (is_repetitive, similarity_score, round_number_of_similar_text)
+        """
+        # Don't track referee arguments
+        if speaker_role == 'referee':
+            return False, 0.0, None
+        
+        # Extract keywords from current text
+        current_keywords = self.extract_keywords(current_text)
+        if not current_keywords:
+            return False, 0.0, None
+        
+        # Compare with history using Jaccard similarity
+        for round_idx, prev_keywords in enumerate(self.argument_history):
+            if not prev_keywords:
+                continue
+            
+            # Jaccard similarity: |A ∩ B| / |A ∪ B|
+            intersection = current_keywords & prev_keywords
+            union = current_keywords | prev_keywords
+            
+            if union:
+                similarity = len(intersection) / len(union)
+                
+                # If similarity exceeds threshold, flag as repetition
+                if similarity >= self.similarity_threshold:
+                    similar_round = len(self.argument_history) - round_idx
+                    return True, similarity, similar_round
+        
+        # No repetition found, add to history
+        self.argument_history.append(current_keywords)
+        return False, 0.0, None
+
+
+
+
+class Language(Enum):
+    """Supported languages"""
+    ENGLISH = "en"
+    KOREAN = "ko"
+    JAPANESE = "ja"
+    CHINESE = "zh"
+    SPANISH = "es"
+
+
 class AIProvider(Enum):
     """Available AI providers"""
     CLAUDE = "claude"
@@ -659,87 +804,6 @@ class GrokClient(BaseAIClient):
             return f"[Web search error: {str(e)}]\n[웹 검색 오류: {str(e)}]"
 
 
-class GeminiClient(BaseAIClient):
-    """Gemini AI client (Google)"""
-    
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
-        super().__init__()
-        if not GEMINI_AVAILABLE:
-            raise ImportError("Google Gemini library not available")
-        genai.configure(api_key=api_key)
-        self.model_name = model
-        
-        # FIX: 도구를 __init__ 시점에 바인딩 (권장 방식)
-        # 이렇게 하면 런타임 도구 전달이 무시되는 문제 방지
-        try:
-            from google.generativeai import protos
-            tools = [protos.Tool(google_search=protos.GoogleSearch())]
-            self.model = genai.GenerativeModel(model, tools=tools)
-            self.tools_enabled = True
-        except ImportError:
-            # protos 사용 불가 시 도구 없이 생성
-            self.model = genai.GenerativeModel(model)
-            self.tools_enabled = False
-    
-    def call(self, system_prompt: str, user_message: str, 
-             use_tools: bool = False) -> Tuple[str, List[Dict]]:
-        self._rate_limit_check()  # Rate limiting 적용
-        
-        for attempt in range(self.max_retries):
-            try:
-                full_prompt = f"{system_prompt}\n\n{user_message}"
-                
-                search_queries = []
-                
-                # 도구가 이미 __init__에서 바인딩되었으므로
-                # use_tools 파라미터는 검색 쿼리 추출 여부만 제어
-                if use_tools and self.tools_enabled:
-                    response = self.model.generate_content(full_prompt)
-                    
-                    # Function call 처리 (Gemini 1.5+)
-                    if hasattr(response, 'candidates') and response.candidates:
-                        candidate = response.candidates[0]
-                        
-                        # Function call 체크
-                        if hasattr(candidate.content, 'parts'):
-                            for part in candidate.content.parts:
-                                if hasattr(part, 'function_call') and part.function_call:
-                                    # Function call 발견
-                                    func_call = part.function_call
-                                    search_queries.append({
-                                        "query": str(func_call.args),
-                                        "tool": func_call.name
-                                    })
-                        
-                        # Grounding metadata 추출
-                        if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
-                            gm = candidate.grounding_metadata
-                            if hasattr(gm, 'web_search_queries') and gm.web_search_queries:
-                                for q in gm.web_search_queries:
-                                    search_queries.append({"query": q, "tool": "google_search"})
-                            elif hasattr(gm, 'search_queries') and gm.search_queries:
-                                for q in gm.search_queries:
-                                    search_queries.append({"query": q, "tool": "google_search"})
-                else:
-                    # 도구 비활성화
-                    response = self.model.generate_content(full_prompt)
-                
-                return response.text, search_queries
-                
-            except Exception as e:
-                if attempt < self.max_retries - 1:
-                    print(f"⚠️ Gemini error, retrying (attempt {attempt + 1}/{self.max_retries})")
-                    time.sleep(2 ** attempt)
-                else:
-                    return f"[Gemini Error: {str(e)}]", []
-        
-        return "[Gemini Error: All retries failed]", []
-    
-    def get_model_name(self) -> str:
-        return f"Grok ({self.model})"
-
-
-@dataclass
 class Doctor:
     """Independent doctor agent with specific AI model"""
     name: str
@@ -914,19 +978,89 @@ class MultiAIDiagnosisSystem:
         self.current_round = 0
         self.language = language
         
-        # Check available providers
-        self.available_providers = []
-        if CLAUDE_AVAILABLE and 'claude' in api_keys:
-            self.available_providers.append(AIProvider.CLAUDE)
-        if OPENAI_AVAILABLE and 'openai' in api_keys:
-            self.available_providers.append(AIProvider.GPT)
-        if GEMINI_AVAILABLE and 'gemini' in api_keys:
-            self.available_providers.append(AIProvider.GEMINI)
-        if GROK_AVAILABLE and 'grok' in api_keys:
-            self.available_providers.append(AIProvider.GROK)
+        # Memory and repetition management
+        self.max_referee_memory = 5  # Keep only recent 5 rounds in referee memory
         
+        # RepetitionDetector with configurable sensitivity
+        # min_keywords=2: Can detect short sentence repetition (e.g., "lupus syndrome")
+        # min_keywords=3: More strict, avoids false positives for very short statements
+        self.repetition_detector = RepetitionDetector(
+            max_history=10, 
+            similarity_threshold=0.85,
+            min_keywords=2  # Allow detection of shorter repeated arguments
+        )
+        
+        # Check available providers with detailed validation
+        self.available_providers = []
+        missing_libraries = []
+        missing_keys = []
+        
+        # Check each provider
+        if 'claude' in api_keys or 'anthropic' in api_keys:
+            if CLAUDE_AVAILABLE:
+                key = api_keys.get('claude') or api_keys.get('anthropic')
+                if key and len(key) > 0:
+                    self.available_providers.append(AIProvider.CLAUDE)
+                else:
+                    missing_keys.append('claude/anthropic')
+            else:
+                missing_libraries.append('anthropic (pip install anthropic)')
+        
+        if 'openai' in api_keys or 'gpt' in api_keys:
+            if OPENAI_AVAILABLE:
+                key = api_keys.get('openai') or api_keys.get('gpt')
+                if key and len(key) > 0:
+                    self.available_providers.append(AIProvider.GPT)
+                else:
+                    missing_keys.append('openai/gpt')
+            else:
+                missing_libraries.append('openai (pip install openai)')
+        
+        if 'gemini' in api_keys or 'google' in api_keys:
+            if GEMINI_AVAILABLE:
+                key = api_keys.get('gemini') or api_keys.get('google')
+                if key and len(key) > 0:
+                    self.available_providers.append(AIProvider.GEMINI)
+                else:
+                    missing_keys.append('gemini/google')
+            else:
+                missing_libraries.append('google-generativeai (pip install google-generativeai)')
+        
+        if 'grok' in api_keys or 'xai' in api_keys:
+            if GROK_AVAILABLE:
+                key = api_keys.get('grok') or api_keys.get('xai')
+                if key and len(key) > 0:
+                    self.available_providers.append(AIProvider.GROK)
+                else:
+                    missing_keys.append('grok/xai')
+            else:
+                missing_libraries.append('openai for Grok (pip install openai)')
+        
+        # Provide detailed error message if no providers available
         if not self.available_providers:
-            raise ValueError("No AI providers available. Please install libraries and provide API keys.")
+            error_msg = "❌ No AI providers available.\n\n"
+            
+            if missing_libraries:
+                error_msg += "📦 Missing libraries:\n"
+                for lib in missing_libraries:
+                    error_msg += f"  • {lib}\n"
+                error_msg += "\n"
+            
+            if missing_keys:
+                error_msg += "🔑 Missing or empty API keys:\n"
+                for key in missing_keys:
+                    error_msg += f"  • {key}\n"
+                error_msg += "\n"
+            
+            error_msg += "💡 To fix:\n"
+            error_msg += "  1. Install required libraries: pip install -r requirements.txt\n"
+            error_msg += "  2. Create .env file with your API keys:\n"
+            error_msg += "     OPENAI_API_KEY=sk-...\n"
+            error_msg += "     ANTHROPIC_API_KEY=sk-ant-...\n"
+            error_msg += "     GOOGLE_API_KEY=...\n"
+            error_msg += "  3. At least ONE valid API key is required.\n"
+            
+            raise ValueError(error_msg)
         
         print(f"✅ Available AI providers: {[p.value for p in self.available_providers]}")
         print(f"🌐 Language: {self._get_language_name(language)}")
@@ -1147,6 +1281,37 @@ class MultiAIDiagnosisSystem:
         referee.ai_client = self._create_ai_client(referee.ai_provider)
         # FIX: 심판의 개인 메모리도 초기화 (완전한 오염 제거)
         referee.memory = []
+    
+    
+    def summarize_text(self, text: str, max_length: int = 500) -> str:
+        """Summarize long text to prevent context overflow"""
+        if len(text) <= max_length:
+            return text
+        return text[:max_length] + "..."
+    
+    def add_referee_memory(self, referee: Referee, memory_item: Dict) -> None:
+        """
+        Add memory to referee with automatic size management and summarization
+        Keeps only the most recent max_referee_memory items
+        
+        Args:
+            referee: Referee object to add memory to
+            memory_item: Dictionary containing memory information
+        """
+        # Limit memory size to prevent context window overflow
+        if len(referee.memory) >= self.max_referee_memory:
+            # Remove oldest item (FIFO) - safe because we checked length
+            if referee.memory:  # Double-check for defensive programming
+                referee.memory.pop(0)
+        
+        # Summarize long fields before adding
+        if 'referee_feedback' in memory_item:
+            memory_item['referee_feedback'] = self.summarize_text(memory_item['referee_feedback'], 500)
+        if 'diagnoses_summary' in memory_item:
+            memory_item['diagnoses_summary'] = self.summarize_text(memory_item['diagnoses_summary'], 300)
+        
+        # Add new memory
+        referee.memory.append(memory_item)
     
     def get_active_referee(self, current_round: int) -> Referee:
         """
@@ -1437,6 +1602,11 @@ You will discuss with Dr. {doc2.name}, so provide clear evidence.
                 opinion1, searches1 = doc1.think(context, question1, use_web_search=True)
                 all_searches.extend(searches1)
                 
+                # JACCARD REPETITION CHECK
+                is_rep1, sim1, prev1 = self.repetition_detector.check_repetition(opinion1, 'doctor')
+                if is_rep1:
+                    print(f"  ⚠️ REPETITION: Dr. {doc1.name} - {sim1:.0%} similar to round {prev1}")
+                
                 print(f"\n[{doc1.name} - {doc1.ai_client.get_model_name()}]")
                 if searches1:
                     for s in searches1:
@@ -1460,6 +1630,11 @@ Use web search for latest information.
                 opinion2, searches2 = doc2.think(context, question2, use_web_search=True)
                 all_searches.extend(searches2)
                 
+                # JACCARD REPETITION CHECK
+                is_rep2, sim2, prev2 = self.repetition_detector.check_repetition(opinion2, 'doctor')
+                if is_rep2:
+                    print(f"  ⚠️ REPETITION: Dr. {doc2.name} - {sim2:.0%} similar to round {prev2}")
+                
                 print(f"[{doc2.name} - {doc2.ai_client.get_model_name()}]")
                 if searches2:
                     for s in searches2:
@@ -1474,20 +1649,38 @@ Use web search for latest information.
                     "doctors": [doc1.name, doc2.name],
                     "models": [doc1.ai_client.get_model_name(), doc2.ai_client.get_model_name()],
                     "opinion1": opinion1,
-                    "opinion2": opinion2
+                    "opinion2": opinion2,
+                    "repetition1": (is_rep1, sim1, prev1),  # Add repetition info
+                    "repetition2": (is_rep2, sim2, prev2)   # Add repetition info
                 })
             
             # STAGE 2: REFEREE CHECK
             print(f"\n⚖️ STAGE 2: REFEREE CHECK - {active_referee.name}\n")
             
-            all_opinions_text = "\n\n".join([
-                f"Group {op['group']} ({', '.join(op['models'])}):\n"
-                f"Dr. {op['doctors'][0]}: {op['opinion1'][:800]}"
-                + ("..." if len(op['opinion1']) > 800 else "") + "\n"
-                f"Dr. {op['doctors'][1]}: {op['opinion2'][:800]}"
-                + ("..." if len(op['opinion2']) > 800 else "")
-                for op in group_opinions
-            ])
+            # Build opinions text with repetition alerts
+            opinions_with_alerts = []
+            for op in group_opinions:
+                group_text = f"Group {op['group']} ({', '.join(op['models'])}):\n"
+                
+                # Doctor 1 with repetition check
+                is_rep1, sim1, prev1 = op['repetition1']
+                rep_alert1 = ""
+                if is_rep1:
+                    rep_alert1 = f"\n⚠️ [REPETITION ALERT] Dr. {op['doctors'][0]}'s argument is {sim1:.0%} similar to round {prev1}. This doctor may be stuck in a loop - demand new evidence or alternative approach.\n"
+                
+                doc1_text = f"Dr. {op['doctors'][0]}: {rep_alert1}{op['opinion1'][:800]}" + ("..." if len(op['opinion1']) > 800 else "")
+                
+                # Doctor 2 with repetition check
+                is_rep2, sim2, prev2 = op['repetition2']
+                rep_alert2 = ""
+                if is_rep2:
+                    rep_alert2 = f"\n⚠️ [REPETITION ALERT] Dr. {op['doctors'][1]}'s argument is {sim2:.0%} similar to round {prev2}. This doctor may be stuck in a loop - demand new evidence or alternative approach.\n"
+                
+                doc2_text = f"Dr. {op['doctors'][1]}: {rep_alert2}{op['opinion2'][:800]}" + ("..." if len(op['opinion2']) > 800 else "")
+                
+                opinions_with_alerts.append(group_text + doc1_text + "\n" + doc2_text)
+            
+            all_opinions_text = "\n\n".join(opinions_with_alerts)
             
             referee_question = f"""
 {reset_instruction}{previous_context_for_referee}
@@ -1500,6 +1693,10 @@ Your tasks:
 2. Detect hallucinations (non-existent drugs, treatments, etc.)
 3. Use web search to fact-check each diagnosis
 4. Point out missed differential diagnoses
+5. ⚠️ IF you see REPETITION ALERTS above, explicitly address them:
+   - Demand new evidence or different diagnostic approach from repeating doctors
+   - Do NOT allow the debate to continue with repetitive arguments
+   - Suggest alternative tests or perspectives they haven't considered
 
 ⚕️ MANDATORY drug verification steps - do these FIRST:
 - Search: "[each medication the patient takes] side effects"
@@ -1530,28 +1727,266 @@ Do not add any explanation or text after the JSON line.
             
             time.sleep(1)
             
-            # --- 종료 조건: JSON 파싱으로 합의 판별 ---
+            # DO NOT terminate here - continue to all 5 stages
+            # Consensus will be checked only after STAGE 5 FINAL JUDGMENT
+            
+            # STAGE 3: CROSS-COUNTER
+            print("\n💬 STAGE 3: CROSS-COUNTER\n")
+            
+            group_counters = []
+            for idx, (doc1, doc2) in enumerate(groups, 1):
+                print(f"--- Group {idx}: {doc1.name} vs {doc2.name} ---")
+                
+                # Doc1 counters Doc2's opinion
+                counter_question1 = f"""
+{previous_feedback_for_doctors}
+Dr. {doc2.name} provided this opinion:
+
+{group_opinions[idx-1]['opinion2']}
+
+As Dr. {doc1.name}, critically analyze this opinion.
+Point out any weaknesses, alternative diagnoses, or missed considerations.
+Use web search if needed to support your counter-arguments.
+"""
+                counter1, searches_c1 = doc1.think(context, counter_question1, use_web_search=True)
+                all_searches.extend(searches_c1)
+                
+                print(f"[{doc1.name} counters {doc2.name}]")
+                if searches_c1:
+                    for s in searches_c1:
+                        print(f"  🔍 Search: {s['query']}")
+                display_c1 = counter1[:400] + ("..." if len(counter1) > 400 else "")
+                print(f"{display_c1}\n")
+                
+                time.sleep(1)
+                
+                # Doc2 counters Doc1's opinion
+                counter_question2 = f"""
+{previous_feedback_for_doctors}
+Dr. {doc1.name} provided this opinion:
+
+{group_opinions[idx-1]['opinion1']}
+
+As Dr. {doc2.name}, critically analyze this opinion.
+Point out any weaknesses, alternative diagnoses, or missed considerations.
+Use web search if needed to support your counter-arguments.
+"""
+                counter2, searches_c2 = doc2.think(context, counter_question2, use_web_search=True)
+                all_searches.extend(searches_c2)
+                
+                print(f"[{doc2.name} counters {doc1.name}]")
+                if searches_c2:
+                    for s in searches_c2:
+                        print(f"  🔍 Search: {s['query']}")
+                display_c2 = counter2[:400] + ("..." if len(counter2) > 400 else "")
+                print(f"{display_c2}\n")
+                
+                time.sleep(1)
+                
+                group_counters.append({
+                    "group": idx,
+                    "counter1": counter1,
+                    "counter2": counter2
+                })
+            
+            # REFEREE CHECK AFTER CROSS-COUNTER
+            print(f"\n⚖️ REFEREE CHECK (Post-Cross-Counter) - {active_referee.name}\n")
+            
+            all_counters_text = "\n\n".join([
+                f"Group {cnt['group']}:\n"
+                f"Counter 1: {self.summarize_text(cnt['counter1'], 400)}\n"
+                f"Counter 2: {self.summarize_text(cnt['counter2'], 400)}"
+                for cnt in group_counters
+            ])
+            
+            referee_question_counter = f"""
+{reset_instruction}{previous_context_for_referee}
+Review the cross-counter arguments:
+
+{all_counters_text}
+
+Evaluate:
+1. Are the counter-arguments medically sound?
+2. Do they raise valid alternative diagnoses?
+3. Any logical fallacies or unsupported claims?
+4. Use web search to verify counter-arguments.
+
+Provide critical feedback.
+"""
+            
+            referee_check_counter, ref_searches2 = active_referee.evaluate(context, referee_question_counter)
+            all_searches.extend(ref_searches2)
+            
+            print(f"[{active_referee.name}]")
+            if ref_searches2:
+                for s in ref_searches2:
+                    print(f"  🔍 Search: {s['query']}")
+            print(f"{referee_check_counter[:500]}\n")
+            
+            time.sleep(1)
+            
+            # STAGE 4: REBUTTAL
+            print("\n🔁 STAGE 4: REBUTTAL\n")
+            
+            group_rebuttals = []
+            for idx, (doc1, doc2) in enumerate(groups, 1):
+                print(f"--- Group {idx}: Rebuttals ---")
+                
+                # Doc1 rebuts Doc2's counter
+                rebuttal_question1 = f"""
+{previous_feedback_for_doctors}
+Dr. {doc2.name} countered your opinion with:
+
+{group_counters[idx-1]['counter2']}
+
+Provide your rebuttal. Defend your original diagnosis or acknowledge valid points.
+Use evidence and web search if needed.
+"""
+                rebuttal1, searches_r1 = doc1.think(context, rebuttal_question1, use_web_search=True)
+                all_searches.extend(searches_r1)
+                
+                print(f"[{doc1.name} rebuttal]")
+                if searches_r1:
+                    for s in searches_r1:
+                        print(f"  🔍 Search: {s['query']}")
+                print(f"{rebuttal1[:400]}\n")
+                
+                time.sleep(1)
+                
+                # Doc2 rebuts Doc1's counter
+                rebuttal_question2 = f"""
+{previous_feedback_for_doctors}
+Dr. {doc1.name} countered your opinion with:
+
+{group_counters[idx-1]['counter1']}
+
+Provide your rebuttal. Defend your original diagnosis or acknowledge valid points.
+Use evidence and web search if needed.
+"""
+                rebuttal2, searches_r2 = doc2.think(context, rebuttal_question2, use_web_search=True)
+                all_searches.extend(searches_r2)
+                
+                print(f"[{doc2.name} rebuttal]")
+                if searches_r2:
+                    for s in searches_r2:
+                        print(f"  🔍 Search: {s['query']}")
+                print(f"{rebuttal2[:400]}\n")
+                
+                time.sleep(1)
+                
+                group_rebuttals.append({
+                    "group": idx,
+                    "rebuttal1": rebuttal1,
+                    "rebuttal2": rebuttal2
+                })
+            
+            # REFEREE CHECK AFTER REBUTTAL
+            print(f"\n⚖️ REFEREE CHECK (Post-Rebuttal) - {active_referee.name}\n")
+            
+            all_rebuttals_text = "\n\n".join([
+                f"Group {reb['group']}:\n"
+                f"Rebuttal 1: {self.summarize_text(reb['rebuttal1'], 400)}\n"
+                f"Rebuttal 2: {self.summarize_text(reb['rebuttal2'], 400)}"
+                for reb in group_rebuttals
+            ])
+            
+            referee_question_rebuttal = f"""
+{reset_instruction}{previous_context_for_referee}
+Review the rebuttals:
+
+{all_rebuttals_text}
+
+Evaluate:
+1. Are the rebuttals logically sound?
+2. Do doctors acknowledge valid criticisms?
+3. Any persistent errors or hallucinations?
+4. Use web search to verify claims.
+
+Provide critical feedback.
+"""
+            
+            referee_check_rebuttal, ref_searches3 = active_referee.evaluate(context, referee_question_rebuttal)
+            all_searches.extend(ref_searches3)
+            
+            print(f"[{active_referee.name}]")
+            if ref_searches3:
+                for s in ref_searches3:
+                    print(f"  🔍 Search: {s['query']}")
+            print(f"{referee_check_rebuttal[:500]}\n")
+            
+            time.sleep(1)
+            
+            # STAGE 5: FINAL JUDGMENT
+            print(f"\n⚖️ STAGE 5: FINAL JUDGMENT - {active_referee.name}\n")
+            
+            # Compile all debate information
+            full_debate_summary = f"""
+OPINIONS:
+{all_opinions_text}
+
+CROSS-COUNTERS:
+{all_counters_text}
+
+REBUTTALS:
+{all_rebuttals_text}
+"""
+            
+            final_judgment_question = f"""
+{reset_instruction}{previous_context_for_referee}
+Review the COMPLETE debate:
+
+{full_debate_summary}
+
+Your FINAL tasks:
+1. Synthesize all arguments
+2. Identify consensus points
+3. Highlight remaining disagreements
+4. Use web search for final verification
+5. Determine if diagnostic consensus is reached
+
+⚕️ Final drug/medication check:
+- Verify all medications mentioned
+- Check for drug-induced symptoms
+- Confirm no diagnosis is actually a side effect
+
+At the end, output EXACTLY this JSON on a single line (no extra text after it):
+{{"consensus_reached": true}}  if consensus IS reached
+{{"consensus_reached": false}} if consensus is NOT reached
+Do not add any explanation or text after the JSON line.
+"""
+            
+            final_judgment, ref_searches4 = active_referee.evaluate(context, final_judgment_question)
+            all_searches.extend(ref_searches4)
+            
+            print(f"[{active_referee.name} - FINAL JUDGMENT]")
+            if ref_searches4:
+                for s in ref_searches4:
+                    print(f"  🔍 Search: {s['query']}")
+            display_final = final_judgment[:500] + ("..." if len(final_judgment) > 500 else "")
+            print(f"{display_final}\n")
+            
+            time.sleep(1)
+            
+            # --- 종료 조건: STAGE 5 이후 JSON 파싱으로 합의 판별 ---
+            # CRITICAL: Consensus is ONLY checked after completing ALL 5 stages
+            # This ensures referee intervenes at every stage regardless of early agreement
             consensus_reached = False
             try:
-                # FIX: JSON 파싱 개선 - 다양한 형식 지원
                 import re as re_module
                 import json as json_module
                 
-                # FIX #3: 마크다운 코드 블록 먼저 확인
+                # Parse final judgment for consensus
                 code_block_match = re_module.search(
                     r'```json\s*\n(.*?)\n```', 
-                    referee_check, 
+                    final_judgment, 
                     re_module.DOTALL | re_module.IGNORECASE
                 )
                 
                 if code_block_match:
-                    # 마크다운 코드 블록 내부의 JSON 사용
                     json_text = code_block_match.group(1).strip()
                 else:
-                    # 코드 블록 없으면 전체 텍스트에서 검색
-                    json_text = referee_check
+                    json_text = final_judgment
                 
-                # JSON 블록 추출 (따옴표 여부와 무관하게)
                 json_match = re_module.search(
                     r'\{[^}]*["\']?consensus_reached["\']?\s*:\s*(true|false)[^}]*\}',
                     json_text,
@@ -1561,88 +1996,87 @@ Do not add any explanation or text after the JSON line.
                 if json_match:
                     json_str = json_match.group(0)
                     try:
-                        # 표준 JSON 파싱 시도
                         data = json_module.loads(json_str)
                         consensus_reached = data.get("consensus_reached", False)
                     except json_module.JSONDecodeError:
-                        # JSON 파싱 실패 시 정규식으로 true/false 추출
                         value_match = re_module.search(r'(true|false)', json_str, re_module.IGNORECASE)
                         if value_match:
                             consensus_reached = value_match.group(1).lower() == "true"
                 else:
-                    # JSON 없으면 fallback: 부정형 먼저 체크 후 긍정형 체크
-                    lower_check = referee_check.lower()
-                    # 부정형 패턴 먼저 확인
+                    # Fallback parsing
+                    lower_check = final_judgment.lower()
                     negatives_en = ["not reached", "not yet reached", "not achieved",
                                     "no consensus", "has not been reached", "consensus is not"]
                     negatives_kr = ["도달하지 못", "합의되지 않", "합의 안", "아직 합의"]
                     
                     is_negative = any(neg in lower_check for neg in negatives_en) or \
-                                  any(neg in referee_check for neg in negatives_kr)
+                                  any(neg in final_judgment for neg in negatives_kr)
                     
                     if not is_negative:
-                        # 부정형 없는 경우에만 긍정형 확인
                         positives_en = ["consensus reached", "consensus achieved",
                                         "consensus has been reached", "reached consensus"]
                         positives_kr = ["합의에 도달", "합의가 달성", "합의 도달"]
                         
                         is_positive = any(pos in lower_check for pos in positives_en) or \
-                                      any(pos in referee_check for pos in positives_kr)
+                                      any(pos in final_judgment for pos in positives_kr)
                         
                         consensus_reached = is_positive
             except Exception:
                 consensus_reached = False
             
             # --- 현재 라운드 데이터를 활성 심판의 메모리에 저장 ---
-            # FIX: previous_rounds 전역 리스트 대신 심판별 독립 메모리 사용
-            # FIX V3: 리셋 여부도 기록하여 나중에 참조 시 무효화 가능
             diagnoses_summary = ", ".join([
                 f"Group {op['group']}: {op['opinion1'][:150]}"
                 for op in group_opinions
             ])
             
-            # 리셋 여부 확인
             was_reset = referee_reset_this_round.get(active_referee.name, False)
             
-            # 활성 심판의 메모리에만 추가 (다른 심판은 접근 불가)
+            # Update referee memory with FINAL judgment (not intermediate check)
             active_referee.memory.append({
                 "round": round_num,
                 "diagnoses_summary": diagnoses_summary,
-                "referee_feedback": referee_check,
+                "referee_feedback": final_judgment,  # Use final judgment
                 "consensus": consensus_reached,
-                "was_reset": was_reset  # FIX V3: 리셋 여부 기록
+                "was_reset": was_reset,
+                "stages_completed": 5  # Mark that all 5 stages were completed
             })
             
-            # previous_rounds는 디버깅/출력용으로만 유지
-            # FIX V3: 리셋 정보 포함 및 INVALIDATED 마킹
+            # Update previous_rounds for debugging
             round_record = {
                 "round": round_num,
                 "referee_name": active_referee.name,
                 "diagnoses_summary": diagnoses_summary,
-                "referee_feedback": referee_check,
+                "referee_feedback": final_judgment,
                 "consensus": consensus_reached,
                 "was_reset": was_reset,
-                "status": "INVALIDATED_RESET" if was_reset else "VALID"  # 리셋 시 무효화 마킹
+                "status": "INVALIDATED_RESET" if was_reset else "VALID",
+                "stages_completed": 5
             }
             previous_rounds.append(round_record)
             
-            # --- 종료 판정 ---
+            # --- 종료 판정 (모든 5단계 완료 후에만) ---
             if consensus_reached:
                 if self.language == 'ko':
                     print("\n✅ 합의 도달! 진단 완료.\n")
+                    print(f"   → 총 {round_num}라운드 진행")
+                    print(f"   → 라운드당 심판 개입 횟수: 4회 (Post-Opinion, Post-Counter, Post-Rebuttal, Final Judgment)")
+                    print(f"   → 총 심판 개입: {round_num * 4}회\n")
                 else:
                     print("\n✅ Consensus reached! Diagnosis complete.\n")
+                    print(f"   → Total rounds: {round_num}")
+                    print(f"   → Referee interventions per round: 4 (Post-Opinion, Post-Counter, Post-Rebuttal, Final Judgment)")
+                    print(f"   → Total referee interventions: {round_num * 4}\n")
                 break
             
             if round_num >= max_rounds:
                 if self.language == 'ko':
                     print("\n⚠️ 최대 라운드 도달. 현재까지의 의견을 출력합니다.\n")
+                    print(f"   → 총 심판 개입: {max_rounds * 4}회\n")
                 else:
                     print("\n⚠️ Max rounds reached. Outputting current opinions.\n")
+                    print(f"   → Total referee interventions: {max_rounds * 4}\n")
                 break
-            
-            # Simplified STAGE 3-5 for brevity
-            print(f"[Stages 3-5 abbreviated for demo]\n")
         
         result = {
             "patient": patient,

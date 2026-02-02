@@ -1,186 +1,97 @@
-# Real-time Referee-Mediated Medical Diagnosis System
-# 실시간 심판 개입 및 순환 중첩 구조 기반 고정밀 의료 진단 시스템
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 📋 Overview
+🩺 Multi-AI Medical Diagnosis System
 
-This system implements an advanced medical diagnosis framework using:
-- **Circular Overlap Structure**: Multiple specialist groups with overlapping expertise
-- **Referee-Mediated Debate**: Asymmetric debate protocol with strict hallucination control
-- **Multi-agent Collaboration**: Neutral medical specialists working in coordinated groups
+High-Precision Medical Diagnosis System based on Real-time Referee Intervention & Circular Overlap Structure
 
-### Key Features
+(실시간 심판 개입 및 순환 중첩 구조 기반 고정밀 의료 진단 시스템)
 
-- ✅ Structured medical inquiry (one question at a time)
-- ✅ Dynamic specialist selection based on symptoms
-- ✅ Circular overlap group formation (e.g., Group1: A+B, Group2: B+C)
-- ✅ 5-stage debate protocol with referee intervention
-- ✅ Automatic hallucination detection and correction
-- ✅ Stagnation detection (10-round repetition check)
-- ✅ Maximum 100 rounds with parallel output on disagreement
-- ✅ Persona reset mechanism for non-compliant agents
+🚀 Overview (개요)
 
-## 🏗️ System Architecture
+This system is a research-oriented diagnostic framework that minimizes errors through multi-agent collaboration and a dual-referee checking system.
 
-```
-User Input
-    ↓
-Diagnostic Medicine Specialist (문진)
-    ↓
-Specialist Selection & Group Formation
-    ↓
-Circular Overlap Debate Groups
-    ↓
-5-Stage Debate Protocol
-    ├── Opinion
-    ├── Referee Check
-    ├── Cross-Counter
-    ├── Rebuttal
-    └── Final Judgment
-    ↓
-Diagnosis Output
-```
+(본 시스템은 다중 에이전트 협업과 이중 심판 체계를 통해 오진을 최소화하는 연구용 진단 프레임워크입니다.)
 
-## 🚀 Installation
+✨ Key Features (주요 특징)
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/medical-diagnosis-system.git
-cd medical-diagnosis-system
+1. Dual Referee System (이중 심판 체계)
 
-# Install dependencies
+Referee 1 ($5n$): Intervenes every 5 rounds to reset context and eliminate bias.
+
+(매 5라운드마다 개입하여 컨텍스트를 정돈하고 편향성을 제거합니다.)
+
+Referee 2 ($5n-3$): Intervenes at rounds 2, 7, 12... to monitor logical gaps.
+
+(2, 7, 12... 라운드에 개입하여 논리적 허점을 감시합니다.)
+
+Compatibility: These two schedules never overlap, ensuring continuous but independent oversight.
+
+(두 일정은 절대 겹치지 않으며, 독립적인 상호 감시를 보장합니다.)
+
+2. Circular Overlap Group Structure (순환 중첩 그룹 구조)
+
+Doctors are organized into groups where each group shares at least one member with another.
+
+(의사들을 그룹으로 구성하되, 각 그룹이 최소 한 명 이상의 멤버를 공유하여 의견의 연속성을 유지합니다.)
+
+Example: Group 1(A+B), Group 2(B+C), Group 3(C+D), Group 4(D+A).
+
+3. Multi-AI Provider Support (다중 AI 지원)
+
+Fully compatible with GPT-4, Claude 3.5, Gemini 1.5, and Grok.
+
+(GPT-4, Claude 3.5, Gemini 1.5, Grok과 완벽히 호환됩니다.)
+
+Can operate in Single-AI mode or Multi-AI mode for cross-verification.
+
+(교차 검증을 위해 단일 AI 또는 다중 AI 모드로 작동 가능합니다.)
+
+🛠 Installation & Setup (설치 및 설정)
+
+1. Requirements (필수 라이브러리)
+
+Bash
+
+
+
 pip install -r requirements.txt
 
-# Set up environment variables
-cp .env.example .env
-# Edit .env and add your Anthropic API key
-```
+2. Environment Variables (환경 변수 설정)
 
-## 📦 Requirements
+Create a .env file and add your API keys:
 
-- Python 3.8+
-- anthropic>=0.25.0
-- python-dotenv>=1.0.0
+(.env 파일을 생성하고 API 키를 입력하세요.)
 
-## 💻 Usage
+코드 스니펫
 
-### Basic Usage
 
-```python
-from medical_diagnosis_system import MedicalDiagnosisSystem
 
-# Initialize the system
-system = MedicalDiagnosisSystem(api_key="your-api-key")
+OPENAI_API_KEY=your_key
 
-# Start diagnosis
-system.start_diagnosis()
-```
+ANTHROPIC_API_KEY=your_key
 
-### Command Line Interface
+GOOGLE_API_KEY=your_key
 
-```bash
-python main.py
-```
+🔍 How to Run (실행 방법)
 
-### Example Interaction
+Bash
 
-```
-[진단의학과] 안녕하세요. 진단을 시작하겠습니다.
-먼저 나이와 성별을 알려주시겠습니까?
 
-> 35세 남성입니다
 
-[진단의학과] 현재 복용 중인 약이나 진단받은 만성 질환이 있으십니까?
+# Standard run in Korean (한국어 기본 실행)
 
-> 없습니다
+python cli.py --language ko# Multi-AI mode with detailed logs (다중 AI 모드 및 상세 로그)
 
-[진단의학과] 어떤 증상으로 방문하셨습니까?
+python cli.py --multi-ai --verbose
 
-> 두통과 어지러움이 있습니다
-...
-```
+⚠️ Disclaimer (주의 사항)
 
-## 📚 System Components
+This system is for research and educational purposes only. It is NOT a substitute for professional medical advice, diagnosis, or treatment.
 
-### 1. Diagnostic Medicine Specialist (문진 담당)
-- Conducts structured medical inquiry
-- Asks one question at a time
-- Mandatory checks: age, gender, chronic conditions, medications, family history
+(본 시스템은 연구 및 교육용입니다. 실제 전문의의 의학적 권고, 진단 또는 치료를 대신할 수 없습니다.)
 
-### 2. Referee Agent (심판)
-- Monitors all debates for hallucinations
-- Enforces debate protocol
-- Intervenes on stagnation (10-round repetition)
-- Resets non-compliant agents
+💡 Compatibility Note (호환성 참고)
 
-### 3. Specialist Agents (전문의)
-- Neutral expert stance (no bias)
-- Circular overlap group participation
-- 5-stage debate participation
+This documentation matches the logic in multi_ai_medical_diagnosis.py and cli.py. The sequential inquiry protocol and stagnation detection (10 rounds) are fully implemented and described.
 
-### 4. Debate Protocol
-
-**Stage 1: Opinion**
-- Each specialist presents initial diagnosis
-
-**Stage 2: Referee Check**
-- Validates opinions against medical evidence
-- Flags hallucinations or unsupported claims
-
-**Stage 3: Cross-Counter**
-- Specialists challenge each other's opinions
-
-**Stage 4: Rebuttal**
-- Defense against challenges
-
-**Stage 5: Final Judgment**
-- Referee determines consensus or valid disagreements
-
-## ⚙️ Configuration
-
-Edit `config.yaml` to customize:
-
-```yaml
-max_debate_rounds: 100
-stagnation_threshold: 10
-min_specialists: 2
-max_specialists: 6
-debate_detail_output: false  # Hide internal debate by default
-```
-
-## 🔬 Research & Citation
-
-If you use this system in your research, please cite:
-
-```bibtex
-@software{medical_diagnosis_system,
-  title={Real-time Referee-Mediated Medical Diagnosis System},
-  author={Your Name},
-  year={2026},
-  url={https://github.com/yourusername/medical-diagnosis-system}
-}
-```
-
-## ⚠️ Disclaimer
-
-This system is designed for research purposes and should not replace professional medical diagnosis. Always consult qualified healthcare providers for medical decisions.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
-
-## 📧 Contact
-
-For questions or collaboration inquiries, please open an issue on GitHub.
-
-## 🙏 Acknowledgments
-
-- Based on multi-agent debate frameworks
-- Inspired by clinical diagnostic protocols
-- Built with Anthropic's Claude API
+(이 문서는 업로드된 코드의 순차 문진 프로토콜 및 정체 감지 로직과 완벽히 일치합니다.)

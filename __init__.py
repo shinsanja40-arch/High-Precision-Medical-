@@ -5,21 +5,19 @@ Real-time Referee Intervention & Circular Overlap Structure-based
 High-Precision Medical Diagnosis System
 """
 
-from .medical_diagnosis_system import (
-    MedicalDiagnosisSystem,
-    MedicalPersona,
+from .multi_ai_medical_diagnosis import (
+    MultiAIDiagnosisSystem,
+    Doctor,
     Referee,
-    DiagnosticMedicine,
-    CircularOverlapGroup,
-    PatientInfo,
-    DebateRound,
+    Patient,
     Language,
     AIProvider,
-    AIInterface,
-    GPTInterface,
-    ClaudeInterface,
-    GeminiInterface,
-    GrokInterface
+    BaseAIClient,
+    ClaudeClient,
+    GPTClient,
+    GeminiClient,
+    GrokClient,
+    RepetitionDetector
 )
 
 __version__ = "1.0.0"
@@ -27,18 +25,16 @@ __author__ = "Medical Diagnosis System Contributors"
 __license__ = "MIT"
 
 __all__ = [
-    "MedicalDiagnosisSystem",
-    "MedicalPersona",
+    "MultiAIDiagnosisSystem",
+    "Doctor",
     "Referee",
-    "DiagnosticMedicine",
-    "CircularOverlapGroup",
-    "PatientInfo",
-    "DebateRound",
+    "Patient",
     "Language",
     "AIProvider",
-    "AIInterface",
-    "GPTInterface",
-    "ClaudeInterface",
-    "GeminiInterface",
-    "GrokInterface"
+    "BaseAIClient",
+    "ClaudeClient",
+    "GPTClient",
+    "GeminiClient",
+    "GrokClient",
+    "RepetitionDetector"
 ]

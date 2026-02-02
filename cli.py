@@ -10,8 +10,8 @@ import json
 from typing import Dict, Any
 from dotenv import load_dotenv
 
-from medical_diagnosis_system import (
-    MedicalDiagnosisSystem,
+from multi_ai_medical_diagnosis import (
+    MultiAIDiagnosisSystem,
     Language,
     AIProvider
 )
@@ -309,11 +309,9 @@ def main():
     }
     
     # Initialize system
-    system = MedicalDiagnosisSystem(
-        ai_providers=ai_providers,
-        use_multi_ai=args.multi_ai or len(ai_providers) > 1,
-        language=language_map[args.language],
-        show_debate_details=args.verbose
+    system = MultiAIDiagnosisSystem(
+        api_keys=ai_providers,
+        language=args.language
     )
     
     # Run in appropriate mode
